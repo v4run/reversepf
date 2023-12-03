@@ -6,6 +6,10 @@ ARG GO_VERSION=1.21.4
 FROM golang:${GO_VERSION}-alpine3.18 AS build
 WORKDIR /src
 
+ARG APP_VERSION=development
+ARG COMMIT_HASH
+ARG BUILD_DATE
+
 # Download dependencies as a separate step to take advantage of Docker's caching.
 # Leverage a cache mount to /go/pkg/mod/ to speed up subsequent builds.
 # Leverage bind mounts to go.sum and go.mod to avoid having to copy them into
@@ -21,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 # source code into the container.
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,target=. \
-    CGO_ENABLED=0 go build -o /bin/reversepf .
+    CGO_ENABLED=0 go build -o /bin/reversepf -ldflags="-X 'github.com/v4run/reversepf/version.Version=${APP_VERSION}' -X 'github.com/v4run/reversepf/version.BuildDate=${BUILD_DATE}' -X 'github.com/v4run/reversepf/version.CommitHash=${COMMIT_HASH}' " .
 
 FROM alpine:3.18 AS final
 
