@@ -5,7 +5,7 @@ Makes a local port available in your remote server. Currently supports Kubernete
 ## Building
 
 ```bash
-go build
+make build
 ```
 
 ## Running
