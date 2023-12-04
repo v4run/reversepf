@@ -15,3 +15,10 @@ image:
 load-image:
 	# Load the image to local kind k8s cluster
 	kind load docker-image v4run/reversepf:${APP_VERSION}
+
+push-image:
+	docker buildx build\
+		--build-arg "APP_VERSION=${APP_VERSION}"\
+		--build-arg "COMMIT_HASH=$(shell git rev-parse HEAD)"\
+		--build-arg "BUILD_DATE=$(shell date)"\
+		--push --platform linux/arm/v7,linux/arm64/v8,linux/amd64 -t v4run/reversepf:${APP_VERSION} .
