@@ -44,7 +44,7 @@ func establishControlServerConnection() {
 		for {
 			conn, err = net.Dial("tcp", net.JoinHostPort("", controlServerPort))
 			if err != nil {
-				log.Error("Unable to connect to control server. retrying...", "err", err)
+				log.Warn("Waiting for control server to start")
 				time.Sleep(time.Second * 3)
 				continue
 			}

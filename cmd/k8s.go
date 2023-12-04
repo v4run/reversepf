@@ -241,7 +241,7 @@ func (d Deployer) getPodName(ctx context.Context, k8sConfig k8s.Config) string {
 			}
 		}
 		time.Sleep(time.Second * 2)
-		log.Info("Pod not ready yet. Retrying")
+		log.Info("Pod not ready yet")
 	}
 }
 
