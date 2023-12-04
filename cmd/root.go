@@ -31,6 +31,7 @@ This part proxies traffic between the local service port and the "portal-port".
 
 Remote
 This part runs in the remote server and proxies traffic there.`,
+	Example: "reversepf k8s -l 8888",
 }
 
 func establishControlServerConnection() {

@@ -21,7 +21,8 @@ func init() {
 }
 
 type Config struct {
-	Key               string
+	AppName           string
+	Namespace         string
 	Version           string
 	ControlServerPort string
 	PortalPort        string
@@ -38,30 +39,30 @@ const namespace = `
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: reversepf{{.Key}}
+  name: {{.Namespace}}
 `
 
 const deployment = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: reversepf
-  namespace: reversepf{{.Key}}
+  name: {{.AppName}}
+  namespace: {{.Namespace}}
   labels:
-    app: reversepf
+    app: {{.AppName}}
 spec:
   selector:
     matchLabels:
-      app: reversepf
+      app: {{.AppName}}
   replicas: 1
   template:
     metadata:
       labels:
-        app: reversepf
+        app: {{.AppName}}
     spec:
       containers:
-        - name: reversepf
-          image: v4run/reversepf:{{.Version}}
+        - name: {{.AppName}}
+          image: v4run/{{.AppName}}:{{.Version}}
           imagePullPolicy: IfNotPresent
           args:
             - "remote"
@@ -82,11 +83,11 @@ const service = `
 apiVersion: v1
 kind: Service
 metadata:
-  name: reversepf
-  namespace: reversepf{{.Key}}
+  name: {{.AppName}}
+  namespace: {{.Namespace}}
 spec:
   selector:
-    app: reversepf
+    app: {{.AppName}}
   ports:
     - port: {{.ControlServerPort}}
       name: control-server

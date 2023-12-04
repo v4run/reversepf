@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/v4run/reversepf/internal/k8s"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -39,12 +41,13 @@ import (
 )
 
 const (
-	K8sPrefix = "reversepf"
+	AppName = "reversepf"
 )
 
 var (
 	kubeContext string
 	kubeconfig  string
+	name        string
 )
 
 // k8sCmd represents the k8s command
@@ -68,12 +71,17 @@ var k8sCmd = &cobra.Command{
 		if portalPort == "" {
 			portalPort = ports[1]
 		}
+		if name == "" {
+			name = rand.String(8)
+		}
+		namespace := fmt.Sprintf("%s-%s", AppName, name)
 		k8sConfig := k8s.Config{
-			Key:               "",
+			AppName:           AppName,
 			Version:           version.Version,
 			ControlServerPort: controlServerPort,
 			PortalPort:        portalPort,
 			ServicePort:       servicePort,
+			Namespace:         namespace,
 		}
 		deployer := newDeployer()
 		utils.HandleSignals(func() {
@@ -83,12 +91,31 @@ var k8sCmd = &cobra.Command{
 		if err := deployer.DeployRemoteComponents(ctx, k8sConfig); err != nil {
 			return
 		}
-		if err := deployer.forwardPorts(ctx, k8sConfig, controlServerPort, portalPort); err != nil {
+		if readChanChan, err := deployer.forwardPorts(ctx, k8sConfig, controlServerPort, portalPort); err != nil {
 			log.Error("Error forwarding ports", "err", err)
 			return
+		} else {
+			go func() {
+				for r := range readChanChan {
+					<-r
+					printConnectionDetails(fmt.Sprintf("%s.%s:%s", AppName, namespace, servicePort))
+				}
+			}()
 		}
 		establishControlServerConnection()
 	},
+}
+
+var connectionDetailsStyle = lipgloss.NewStyle().
+	Border(lipgloss.NormalBorder()).
+	Foreground(lipgloss.AdaptiveColor{Light: "236", Dark: "253"}).
+	PaddingTop(1).
+	PaddingBottom(1).
+	PaddingLeft(2).
+	PaddingRight(2)
+
+func printConnectionDetails(details string) {
+	fmt.Println(connectionDetailsStyle.Render(details))
 }
 
 type Deployer struct {
@@ -101,7 +128,7 @@ type Deployer struct {
 func (d Deployer) cleanup(ctx context.Context, config k8s.Config) {
 	log.Info("Cleaning up remote resources")
 	namespaceRes := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
-	if err := d.client.Resource(namespaceRes).Delete(ctx, K8sPrefix+config.Key, metav1.DeleteOptions{}); err != nil {
+	if err := d.client.Resource(namespaceRes).Delete(ctx, config.Namespace, metav1.DeleteOptions{}); err != nil {
 		log.Error("Unable to do cleanup. Please do the cleanup manually", "err", err)
 	}
 }
@@ -137,7 +164,7 @@ func (d Deployer) deploy(
 		types.ApplyPatchType,
 		data,
 		metav1.PatchOptions{
-			FieldManager: K8sPrefix + "-k8s",
+			FieldManager: AppName + "-k8s",
 			Force:        ptr.To(true),
 		},
 	)
@@ -176,17 +203,17 @@ func newDeployer() Deployer {
 
 func (d Deployer) DeployRemoteComponents(ctx context.Context, k8sConfig k8s.Config) error {
 	log.Info("Deploying remote resources")
-	log.Info("Deploying new namespace", "namespace", K8sPrefix+k8sConfig.Key)
+	log.Info("Deploying new namespace", "name", k8sConfig.Namespace)
 	if err := d.deploy(ctx, executeTemplate(k8s.Namespace, k8sConfig)); err != nil {
 		log.Error("Error deploying remote components", "err", err)
 		return err
 	}
-	log.Info("Deploying new deployment", "namespace", K8sPrefix+k8sConfig.Key)
+	log.Info("Deploying new deployment", "namespace", k8sConfig.Namespace)
 	if err := d.deploy(ctx, executeTemplate(k8s.Deployment, k8sConfig)); err != nil {
 		log.Error("Error deploying remote components", "err", err)
 		return err
 	}
-	log.Info("Deploying new service", "namespace", K8sPrefix+k8sConfig.Key)
+	log.Info("Deploying new service", "namespace", k8sConfig.Namespace)
 	if err := d.deploy(ctx, executeTemplate(k8s.Service, k8sConfig)); err != nil {
 		log.Error("Error deploying remote components", "err", err)
 		return err
@@ -194,11 +221,11 @@ func (d Deployer) DeployRemoteComponents(ctx context.Context, k8sConfig k8s.Conf
 	return nil
 }
 
-func (d Deployer) getPodName(ctx context.Context, config k8s.Config) string {
+func (d Deployer) getPodName(ctx context.Context, k8sConfig k8s.Config) string {
 	log.Info("Getting pod details")
 	for {
 		namespaceRes := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
-		list, err := d.client.Resource(namespaceRes).Namespace(K8sPrefix+config.Key).List(ctx, metav1.ListOptions{})
+		list, err := d.client.Resource(namespaceRes).Namespace(k8sConfig.Namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			log.Fatal("Error getting pod list", "err", err)
 		}
@@ -208,9 +235,9 @@ func (d Deployer) getPodName(ctx context.Context, config k8s.Config) string {
 				log.Fatal("Error getting pod details", "err", err)
 			}
 			if podStatus == "Running" {
-				name := u.GetName()
-				log.Info("Pod is Running", "name", name)
-				return name
+				podName := u.GetName()
+				log.Info("Pod is Running", "name", podName)
+				return podName
 			}
 		}
 		time.Sleep(time.Second * 2)
@@ -218,27 +245,28 @@ func (d Deployer) getPodName(ctx context.Context, config k8s.Config) string {
 	}
 }
 
-func (d Deployer) forwardPorts(ctx context.Context, config k8s.Config, ports ...string) error {
+func (d Deployer) forwardPorts(ctx context.Context, k8sConfig k8s.Config, ports ...string) (chan chan struct{}, error) {
 	transport, upgrader, err := spdy.RoundTripperFor(d.config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	url, err := url.Parse(d.config.Host)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	readChanChan := make(chan chan struct{})
 	go func() {
 		for {
-			podName := d.getPodName(ctx, config)
-			url.Path = path.Join("api", "v1", "namespaces", K8sPrefix+config.Key, "pods", podName, "portforward")
+			podName := d.getPodName(ctx, k8sConfig)
+			url.Path = path.Join("api", "v1", "namespaces", k8sConfig.Namespace, "pods", podName, "portforward")
 			dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, url)
 			var formattedPorts []string
 			for _, p := range ports {
 				formattedPorts = append(formattedPorts, fmt.Sprintf("%s:%s", p, p))
 			}
-			stopChan := make(chan struct{})
 			readyChan := make(chan struct{})
-			forwarder, err := portforward.New(dialer, formattedPorts, stopChan, readyChan, io.Discard, os.Stderr)
+			readChanChan <- readyChan
+			forwarder, err := portforward.New(dialer, formattedPorts, nil, readyChan, io.Discard, os.Stderr)
 			if err != nil {
 				log.Error("Error creating new forwarder. Retrying", "err", err)
 			} else {
@@ -249,7 +277,7 @@ func (d Deployer) forwardPorts(ctx context.Context, config k8s.Config, ports ...
 			time.Sleep(time.Second * 5)
 		}
 	}()
-	return nil
+	return readChanChan, nil
 }
 
 func executeTemplate(templateName string, config k8s.Config) string {
@@ -267,6 +295,7 @@ func init() {
 	k8sCmd.Flags().StringVarP(&controlServerPort, "control-server-port", "c", "", "The port on which control server listens")
 	k8sCmd.Flags().StringVarP(&kubeContext, "context", "", "", "The name of the kubeconfig context to use")
 	k8sCmd.Flags().StringVarP(&servicePort, "service-port", "s", "", "The port on which the service is exposed. If not specified, local-port is used")
+	k8sCmd.Flags().StringVarP(&name, "name", "n", "", "The name of this specific run. Reuse a name to replace older instance. If no name is specified a random string is used instead")
 	if home := homedir.HomeDir(); home == "" {
 		k8sCmd.Flags().StringVarP(&kubeconfig, "kubeconfig", "", "", "Path to the kubeconfig file to use for requests")
 		k8sCmd.MarkFlagRequired("context")
