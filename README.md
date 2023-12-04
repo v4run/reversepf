@@ -1,6 +1,6 @@
 # reversepf
 
-Makes a local port available in you remote server. Currently supports kubernets only.
+Makes a local port available in your remote server. Currently supports Kubernetes only.
 
 ## Building
 
@@ -11,8 +11,8 @@ go build
 ## Running
 
 ```bash
-reversepf k8s -l 8888
-# makes the local port 3306 available in the default k8s cluster at reversepf.reversepf:8888
+reversepf --name demo k8s -l 8888 
+# makes the local port 3306 available in the default k8s cluster at reversepf.reversepf-demo:8888
 ```
 
 ## Demo
