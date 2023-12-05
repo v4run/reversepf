@@ -1,21 +1,22 @@
 package k8s
 
 import (
+	"bytes"
 	"text/template"
 
 	"github.com/charmbracelet/log"
 )
 
-var Template = template.New("k8s-manifests")
+var tmplt = template.New("k8s-manifests")
 
 func init() {
-	if _, err := Template.New(Namespace).Parse(namespace); err != nil {
+	if _, err := tmplt.New(Namespace).Parse(namespace); err != nil {
 		log.Fatal("Error parsing template", "err", err, "template", "Namespace")
 	}
-	if _, err := Template.New(Service).Parse(service); err != nil {
+	if _, err := tmplt.New(Service).Parse(service); err != nil {
 		log.Fatal("Error parsing template", "err", err, "template", "Service")
 	}
-	if _, err := Template.New(Deployment).Parse(deployment); err != nil {
+	if _, err := tmplt.New(Deployment).Parse(deployment); err != nil {
 		log.Fatal("Error parsing template", "err", err, "template", "Deployment")
 	}
 }
@@ -27,6 +28,8 @@ type Config struct {
 	ControlServerPort string
 	PortalPort        string
 	ServicePort       string
+	Kubeconfig        string
+	KubeContext       string
 }
 
 const (
@@ -99,3 +102,12 @@ spec:
       name: service
       protocol: TCP
 `
+
+func executeTemplate(templateName string, config Config) (string, error) {
+	var buf bytes.Buffer
+	if err := tmplt.ExecuteTemplate(&buf, templateName, config); err != nil {
+		log.Error("Error executing template", "template", templateName, "err", err)
+		return "", err
+	}
+	return buf.String(), nil
+}

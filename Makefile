@@ -1,9 +1,12 @@
-.PHONY: build image
+.PHONY: build image load-image push-image install
 
-APP_VERSION=v0.0.1
+APP_VERSION=v0.0.2
 
 build:
-	go build -trimpath -ldflags="-s -w -X 'github.com/v4run/reversepf/version.Version=${APP_VERSION}' -X 'github.com/v4run/reversepf/version.BuildDate=${BUILD_DATE}' -X 'github.com/v4run/reversepf/version.CommitHash=${COMMIT_HASH}'"
+	go build -trimpath -ldflags="-s -w -X 'github.com/v4run/reversepf/version.Version=${APP_VERSION}' -X 'github.com/v4run/reversepf/version.BuildDate=$(shell date)' -X 'github.com/v4run/reversepf/version.CommitHash=$(shell git rev-parse HEAD)'"
+
+install:
+	go install -trimpath -ldflags="-s -w -X 'github.com/v4run/reversepf/version.Version=${APP_VERSION}' -X 'github.com/v4run/reversepf/version.BuildDate=$(shell date)' -X 'github.com/v4run/reversepf/version.CommitHash=$(shell git rev-parse HEAD)'"
 
 image:
 	docker image build\
